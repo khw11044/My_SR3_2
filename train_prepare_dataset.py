@@ -9,7 +9,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from google.colab import files
 import glob
 
 '''
@@ -24,7 +23,8 @@ https://github.com/aditya-nutakki/SR3/tree/main
 
 test_transform = transforms.Compose([
                 transforms.ToTensor(),
-                transforms.Normalize((0.5, ), (0.5,)) # normalizing image with mean, std = 0.5, 0.5
+                transforms.Normalize((0.5, ), (0.5,)), # normalizing image with mean, std = 0.5, 0.5
+                transforms.Resize((128, 128), interpolation=InterpolationMode.BICUBIC)
             ])
 
 def sample(model, lr_imgset_path, device = "cuda"):
@@ -39,7 +39,7 @@ def sample(model, lr_imgset_path, device = "cuda"):
         lr_img = cv2.imread(path)
         h,w,c=lr_img.shape
         lr_img = cv2.cvtColor(lr_img, cv2.COLOR_BGR2RGB)
-        lr_img = test_transform(lr_img).reshape(1,c,h,w)
+        lr_img = test_transform(lr_img).reshape(1,c,h*4,w*4)
 
         #stime = time()
         with torch.no_grad():
@@ -51,8 +51,8 @@ def sample(model, lr_imgset_path, device = "cuda"):
         
                 t = torch.tensor(t, device = device).long()
                
-                pred_noise = model(torch.cat([lr_img, y], dim = 1), alpha_t_hat.view(-1).to(device))
-                y = (torch.sqrt(1/alpha_t))*(y - (1-alpha_t)/torch.sqrt(1 - alpha_t_hat) * pred_noise)
+                pred_noise = model(torch.cat([lr_img, y], dim = 1), alpha_t_hat.view(-1).to(device))    # ([1, 3, 32, 32])
+                y = (torch.sqrt(1/alpha_t))*(y - (1-alpha_t)/torch.sqrt(1 - alpha_t_hat) * pred_noise)  # ([1, 3, 32, 32])
                 if t > 1:
                     noise = torch.randn_like(y)
                     y = y + torch.sqrt(beta_t) * noise
@@ -81,50 +81,50 @@ def train_ddpm(time_steps = 2000, epochs = 20, batch_size = 16, device = "cuda",
         losses = []
         stime = time()
         
-        for i, (x, y) in enumerate(tqdm(loader, desc='Train')):
+        lr_imgset_path = './testset'
+        sample(ddpm, lr_imgset_path, device = device)
+        
+        # for i, (x, y) in enumerate(tqdm(loader, desc='Train')):
             
-            # 'y' represents the high-resolution target image, while 'x' represents the low-resolution image to be conditioned upon.
+        #     # 'y' represents the high-resolution target image, while 'x' represents the low-resolution image to be conditioned upon.
             
-            bs = y.shape[0]
-            x, y = x.to(device), y.to(device)
+        #     bs = y.shape[0]
+        #     x, y = x.to(device), y.to(device)
 
-            ts = torch.randint(low = 1, high = ddpm.time_steps, size = (bs, ))
-            gamma = ddpm.alpha_hats[ts].to(device)
-            ts = ts.to(device = device)
+        #     ts = torch.randint(low = 1, high = ddpm.time_steps, size = (bs, ))
+        #     gamma = ddpm.alpha_hats[ts].to(device)
+        #     ts = ts.to(device = device)
 
-            y, target_noise = ddpm.add_noise(y, ts)
-            y = torch.cat([x, y], dim = 1)
-            # print(x.shape, target_noise.shape)
-            # print(x.shape)
-            predicted_noise = ddpm.model(y, gamma)          # ([16, 6, 128, 128]), ([16])
-            loss = criterion(target_noise, predicted_noise)
+        #     y, target_noise = ddpm.add_noise(y, ts)
+        #     y = torch.cat([x, y], dim = 1)
+        #     # print(x.shape, target_noise.shape)
+        #     # print(x.shape)
+        #     predicted_noise = ddpm.model(y, gamma)          # ([16, 6, 128, 128]), ([16])
+        #     loss = criterion(target_noise, predicted_noise)
             
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
+        #     opt.zero_grad()
+        #     loss.backward()
+        #     opt.step()
             
-            losses.append(loss.item())
+        #     losses.append(loss.item())
 
-            if i % 250 == 0 and i>0:
-                print(f" Loss: {loss.item()}; step {i}; epoch {ep}")
+        #     if i % 250 == 0 and i>0:
+        #         print(f" Loss: {loss.item()}; step {i}; epoch {ep}")
                 
-            if i % 500 == 0 and i>0:
-                lr_imgset_path = './testset'
-                sample(ddpm, lr_imgset_path, device = device)
+        #     if i % 400 == 0 and i>0:
+        #         print('test')
+        #         lr_imgset_path = './testset'
+        #         sample(ddpm, lr_imgset_path, device = device)
 
-        ftime = time()
-        print(f"Epoch trained in {ftime - stime}s; Avg loss => {sum(losses)/len(losses)}")
+        # ftime = time()
+        # print(f"Epoch trained in {ftime - stime}s; Avg loss => {sum(losses)/len(losses)}")
 
-        torch.save({
-                    'epoch': ep,
-                    'net_dict': ddpm.model.state_dict()
-                    }, f"./sr_ep_{ep}.pt")
+        # torch.save({
+        #             'epoch': ep,
+        #             'net_dict': ddpm.model.state_dict()
+        #             }, f"./sr_ep_{ep}.pt")
         
-        opt_file = f"./sr_ep_{ep}.pt"
-        print(opt_file)
-        files.download(opt_file)
-        
-        print()
+        # print()
 
 
 
