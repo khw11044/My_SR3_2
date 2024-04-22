@@ -46,7 +46,7 @@ def sample(model, lr_imgset_path, device = "cuda"):
         
             y = torch.randn_like(lr_img, device = device)
             lr_img = lr_img.to(device)
-            for i, t in enumerate(range(model.time_steps - 1, 0 , -1)):         # refining
+            for i, t in enumerate(tqdm(range(model.time_steps - 1, 0 , -1))):         # refining
                 alpha_t, alpha_t_hat, beta_t = model.alphas[t], model.alpha_hats[t], model.betas[t]
         
                 t = torch.tensor(t, device = device).long()
@@ -66,7 +66,7 @@ def train_ddpm(model_load=True, time_steps = 2000, epochs = 20, batch_size = 16,
     ddpm = DiffusionModel(time_steps = time_steps)
     start_epoch = 0
     if model_load:
-        checkpoint_file = "./sr_ep_9.pt"
+        checkpoint_file = "./sr_ep_19.pt"
         checkpoint = torch.load(checkpoint_file, map_location=device)
         ddpm.model.load_state_dict(checkpoint["net_dict"])
         start_epoch = checkpoint["epoch"]
@@ -74,70 +74,21 @@ def train_ddpm(model_load=True, time_steps = 2000, epochs = 20, batch_size = 16,
     c, hr_sz, _ = image_dims
     _, lr_sz, _ = low_res_dims
     
-    ds = MySRDataset(dataset_path, hr_sz = hr_sz, lr_sz = lr_sz)
-    loader = DataLoader(ds, batch_size = batch_size, shuffle = True, drop_last = True, num_workers = 0)
-
-    opt = torch.optim.Adam(ddpm.model.parameters(), lr = 1e-3)
-    criterion = nn.MSELoss(reduction="mean")
 
     ddpm.model.to(device)
     print()
-    for ep in range(start_epoch, epochs):
-        ddpm.model.train()
-        print(f"Epoch {ep}/{epochs}:")
-        losses = []
-        stime = time()
+
         
-        # print('test')
-        # lr_imgset_path = './testset'
-        # sample(ddpm, lr_imgset_path, device = device)
-        
-        for i, (x, y) in enumerate(tqdm(loader, desc='Train')):
-            
-            # 'y' represents the high-resolution target image, while 'x' represents the low-resolution image to be conditioned upon.
-            
-            bs = y.shape[0]
-            x, y = x.to(device), y.to(device)
+    print('test')
+    lr_imgset_path = './testset'
+    sample(ddpm, lr_imgset_path, device = device)
+    
 
-            ts = torch.randint(low = 1, high = ddpm.time_steps, size = (bs, ))
-            gamma = ddpm.alpha_hats[ts].to(device)
-            ts = ts.to(device = device)
-
-            y, target_noise = ddpm.add_noise(y, ts)
-            y = torch.cat([x, y], dim = 1)
-            # print(x.shape, target_noise.shape)
-            # print(x.shape)
-            predicted_noise = ddpm.model(y, gamma)          # ([16, 6, 128, 128]), ([16])
-            loss = criterion(target_noise, predicted_noise)
-            
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
-            
-            losses.append(loss.item())
-
-            if i % 250 == 0 and i>0:
-                print(f" Loss: {loss.item()}; step {i}; epoch {ep}")
-                
-            if i % 400 == 0 and i>0:
-                print('test')
-                lr_imgset_path = './testset'
-                sample(ddpm, lr_imgset_path, device = device)
-
-        ftime = time()
-        print(f"Epoch trained in {ftime - stime}s; Avg loss => {sum(losses)/len(losses)}")
-
-        torch.save({
-                    'epoch': ep,
-                    'net_dict': ddpm.model.state_dict()
-                    }, f"./sr_ep_{ep}.pt")
-        
-        print()
 
 
 
 if __name__ == "__main__":
     root = './dataset'
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    train_ddpm(model_load=True, time_steps=1000, epochs=100, batch_size=16, device = DEVICE, image_dims = (3, 128, 128), low_res_dims = (3, 32, 32), dataset_path=root)
+    train_ddpm(model_load=True, time_steps=1000, epochs=20, batch_size=16, device = DEVICE, image_dims = (3, 128, 128), low_res_dims = (3, 32, 32), dataset_path=root)
 
